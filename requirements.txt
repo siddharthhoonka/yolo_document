@@ -1,12 +1,10 @@
 streamlit
 opencv-python-headless
-supervision
-ultralytics
 pytesseract
 Pillow
 pdf2image
-PyMuPDF
-torch
+gdown
+ultralytics
+supervision
 groq
 numpy
-gdown

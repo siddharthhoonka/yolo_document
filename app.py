@@ -8,7 +8,7 @@ from pdf2image import convert_from_path
 import tempfile
 import os
 import base64
-from ultralytics import YOLO
+from ultralytics import YOLOv10
 import supervision as sv
 from groq import Groq
 from pytesseract import Output
@@ -19,53 +19,43 @@ import gdown
 # Model Download and Loading
 # -------------------------------
 
-# Define the path where you want the model to be saved relative to your project directory
-MODEL_DIR = 'models'  # Define the folder to store the model
-FILE_PATH = os.path.join(MODEL_DIR, 'yolov10x_best.pt')  # Modify to store inside 'models' folder
-FILE_ID = "15YJAUuHYJQlMm0_rjlC-e_VJPmAvjeiE"  # File ID from the shared link on Google Drive
+MODEL_DIR = 'models'
+MODEL_FILENAME = 'yolov10x_best.pt'
+MODEL_PATH = os.path.join(MODEL_DIR, MODEL_FILENAME)
+FILE_ID = "15YJAUuHYJQlMm0_rjlC-e_VJPmAvjeiE"  # Replace with your actual File ID
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 
 @st.cache_resource
 def download_model():
     """
     Download the YOLO model from Google Drive if it doesn't exist locally.
-
-    Returns:
-        str: Path to the downloaded model file, or None if download fails
     """
-    # Check if the model already exists
-    if not os.path.exists(FILE_PATH):
+    if not os.path.exists(MODEL_PATH):
         st.info("Downloading YOLOv10x model from Google Drive...")
-        # Ensure the directory exists where the model will be saved
-        os.makedirs(os.path.dirname(FILE_PATH), exist_ok=True)
+        os.makedirs(MODEL_DIR, exist_ok=True)
         try:
-            # Download the file using gdown
-            gdown.download(FILE_URL, FILE_PATH, quiet=False)
-            st.success(f"Model downloaded successfully at: {FILE_PATH}")
+            gdown.download(FILE_URL, MODEL_PATH, quiet=False)
+            st.success(f"Model downloaded successfully at: {MODEL_PATH}")
         except Exception as e:
             st.error(f"Error downloading the model: {e}")
             return None
     else:
-        st.info(f"Model already exists at: {FILE_PATH}")
-
-    return FILE_PATH
+        st.info(f"Model already exists at: {MODEL_PATH}")
+    return MODEL_PATH
 
 @st.cache_resource
 def load_model():
     """
-    Load the YOLO model from the downloaded file.
-
-    Returns:
-        YOLO: Loaded YOLO model, or None if loading fails
+    Load the YOLOv10x model from the downloaded file.
     """
     model_path = download_model()
     if model_path:
         try:
-            model = YOLO(model_path)
+            model = YOLOv10(model_path)
             st.success("YOLOv10x model loaded successfully.")
             return model
         except Exception as e:
-            st.error(f"Error loading YOLO model: {e}")
+            st.error(f"Error loading YOLOv10x model: {e}")
             return None
     return None
 
@@ -155,9 +145,6 @@ def process_image(model, image, client):
     detections = sv.Detections.from_ultralytics(results)
     annotated_image = annotate_image(image, detections)
 
-    # Optionally display the annotated image in the backend (console)
-    # sv.plot_image(annotated_image)
-
     section_annotations = perform_ocr(image, detections, client)
 
     return annotated_image, section_annotations
@@ -187,7 +174,7 @@ def main():
     if uploaded_file:
         file_type = uploaded_file.name.split('.')[-1].lower()
 
-        # Initialize and load the YOLOv10x model
+        # Load the YOLOv10x model
         model = load_model()
 
         if model is None:
@@ -195,7 +182,6 @@ def main():
             st.stop()
 
         # Initialize Groq client with your API key
-        # Ensure you have set your GROQ_API_KEY in Streamlit's secrets
         try:
             groq_api_key = st.secrets["GROQ_API_KEY"]
         except KeyError:
@@ -211,7 +197,8 @@ def main():
 
             st.image(image, caption="Uploaded Image", use_column_width=True)
 
-            annotated_image, annotations = process_image(model, image_np, client)
+            with st.spinner("Processing image..."):
+                annotated_image, annotations = process_image(model, image_np, client)
 
             st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption="Annotated Image", use_column_width=True)
 
@@ -242,7 +229,8 @@ def main():
                     st.image(page, caption=f"Page {i}", use_column_width=True)
                     page_np = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
 
-                    annotated_image, annotations = process_image(model, page_np, client)
+                    with st.spinner(f"Processing Page {i}..."):
+                        annotated_image, annotations = process_image(model, page_np, client)
 
                     st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption=f"Annotated Page {i}", use_column_width=True)
 

@@ -1,10 +1,10 @@
 streamlit
+opencv-python
+supervision
 ultralytics
-torch
-torchvision
-opencv-python-headless
+pytesseract
 Pillow
-numpy
-gdown
 pdf2image
 PyMuPDF
+torch
+groq

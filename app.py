@@ -11,6 +11,7 @@ from ultralytics import YOLOv10
 import supervision as sv
 from groq import Groq
 from pytesseract import Output
+import numpy as np
 
 # Initialize YOLOv10 model
 @st.cache_resource
@@ -22,8 +23,29 @@ def load_yolov10_model(model_path='yolov10x_best.pt'):
 def initialize_groq_client(api_key):
     return Groq(api_key=api_key)
 
+# Function to get image description using Groq client
+def get_image_description(client, image_path):
+    with open(image_path, 'rb') as image_file:
+        image_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Describe this image"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
+                ]
+            }
+        ],
+        model="llama-3.2-11b-vision-preview",
+        stream=False,
+    )
+
+    return chat_completion.choices[0].message.content
+
 # Function to perform OCR and section annotations
-def perform_ocr(image, detections):
+def perform_ocr(image, detections, client):
     section_annotations = {}
     for idx, (box, label) in enumerate(zip(detections.xyxy, detections.class_id)):
         x_min, y_min, x_max, y_max = map(int, box)
@@ -61,28 +83,7 @@ def perform_ocr(image, detections):
 
     return section_annotations
 
-# Function to get image description using Groq client
-def get_image_description(client, image_path):
-    with open(image_path, 'rb') as image_file:
-        image_data = base64.b64encode(image_file.read()).decode('utf-8')
-
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Describe this image"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
-                ]
-            }
-        ],
-        model="llama-3.2-11b-vision-preview",
-        stream=False,
-    )
-
-    return chat_completion.choices[0].message.content
-
-# Function to annotate and display image
+# Function to annotate image
 def annotate_image(image, detections):
     bounding_box_annotator = sv.BoundingBoxAnnotator()
     label_annotator = sv.LabelAnnotator()
@@ -98,7 +99,7 @@ def process_image(model, image, client):
     annotated_image = annotate_image(image, detections)
     sv.plot_image(annotated_image)
 
-    section_annotations = perform_ocr(image, detections)
+    section_annotations = perform_ocr(image, detections, client)
 
     return annotated_image, section_annotations
 
@@ -126,7 +127,13 @@ def main():
         model = load_yolov10_model()
 
         # Initialize Groq client with your API key
-        groq_api_key = st.secrets["GROQ_API_KEY"]  # Store your API key securely
+        # Ensure you have set your GROQ_API_KEY in Streamlit's secrets
+        try:
+            groq_api_key = st.secrets["GROQ_API_KEY"]
+        except KeyError:
+            st.error("GROQ API key not found. Please add it to the Streamlit secrets.")
+            return
+
         client = initialize_groq_client(api_key=groq_api_key)
 
         if file_type in ["jpg", "jpeg", "png"]:

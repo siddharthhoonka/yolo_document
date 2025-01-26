@@ -8,3 +8,4 @@ pdf2image
 PyMuPDF
 torch
 groq
+numpy

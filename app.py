@@ -1,4 +1,5 @@
 # app.py
+
 import streamlit as st
 import cv2
 import pytesseract
@@ -7,44 +8,102 @@ from pdf2image import convert_from_path
 import tempfile
 import os
 import base64
-from ultralytics import YOLOv10
+from ultralytics import YOLO
 import supervision as sv
 from groq import Groq
 from pytesseract import Output
 import numpy as np
+import gdown
 
-# Initialize YOLOv10 model
+# -------------------------------
+# Model Download and Loading
+# -------------------------------
+
+# Define the path where you want the model to be saved relative to your project directory
+MODEL_DIR = 'models'  # Define the folder to store the model
+FILE_PATH = os.path.join(MODEL_DIR, 'yolov10x_best.pt')  # Modify to store inside 'models' folder
+FILE_ID = "15YJAUuHYJQlMm0_rjlC-e_VJPmAvjeiE"  # File ID from the shared link on Google Drive
+FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
+
 @st.cache_resource
-def load_yolov10_model(model_path='yolov10x_best.pt'):
-    return YOLOv10(model_path)
+def download_model():
+    """
+    Download the YOLO model from Google Drive if it doesn't exist locally.
 
-# Initialize Groq client
+    Returns:
+        str: Path to the downloaded model file, or None if download fails
+    """
+    # Check if the model already exists
+    if not os.path.exists(FILE_PATH):
+        st.info("Downloading YOLOv10x model from Google Drive...")
+        # Ensure the directory exists where the model will be saved
+        os.makedirs(os.path.dirname(FILE_PATH), exist_ok=True)
+        try:
+            # Download the file using gdown
+            gdown.download(FILE_URL, FILE_PATH, quiet=False)
+            st.success(f"Model downloaded successfully at: {FILE_PATH}")
+        except Exception as e:
+            st.error(f"Error downloading the model: {e}")
+            return None
+    else:
+        st.info(f"Model already exists at: {FILE_PATH}")
+
+    return FILE_PATH
+
+@st.cache_resource
+def load_model():
+    """
+    Load the YOLO model from the downloaded file.
+
+    Returns:
+        YOLO: Loaded YOLO model, or None if loading fails
+    """
+    model_path = download_model()
+    if model_path:
+        try:
+            model = YOLO(model_path)
+            st.success("YOLOv10x model loaded successfully.")
+            return model
+        except Exception as e:
+            st.error(f"Error loading YOLO model: {e}")
+            return None
+    return None
+
+# -------------------------------
+# Initialize Groq Client
+# -------------------------------
+
 @st.cache_resource
 def initialize_groq_client(api_key):
     return Groq(api_key=api_key)
 
-# Function to get image description using Groq client
+# -------------------------------
+# OCR and Image Description Functions
+# -------------------------------
+
 def get_image_description(client, image_path):
     with open(image_path, 'rb') as image_file:
         image_data = base64.b64encode(image_file.read()).decode('utf-8')
 
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Describe this image"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
-                ]
-            }
-        ],
-        model="llama-3.2-11b-vision-preview",
-        stream=False,
-    )
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this image"},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
+                    ]
+                }
+            ],
+            model="llama-3.2-11b-vision-preview",
+            stream=False,
+        )
+        return chat_completion.choices[0].message.content
+    except Exception as e:
+        st.error(f"Error getting image description: {e}")
+        return "Description not available."
 
-    return chat_completion.choices[0].message.content
-
-# Function to perform OCR and section annotations
 def perform_ocr(image, detections, client):
     section_annotations = {}
     for idx, (box, label) in enumerate(zip(detections.xyxy, detections.class_id)):
@@ -83,7 +142,6 @@ def perform_ocr(image, detections, client):
 
     return section_annotations
 
-# Function to annotate image
 def annotate_image(image, detections):
     bounding_box_annotator = sv.BoundingBoxAnnotator()
     label_annotator = sv.LabelAnnotator()
@@ -92,18 +150,22 @@ def annotate_image(image, detections):
     annotated_image = label_annotator.annotate(scene=annotated_image, detections=detections)
     return annotated_image
 
-# Function to process images
 def process_image(model, image, client):
     results = model(source=image, conf=0.2, iou=0.8)[0]
     detections = sv.Detections.from_ultralytics(results)
     annotated_image = annotate_image(image, detections)
-    sv.plot_image(annotated_image)
+
+    # Optionally display the annotated image in the backend (console)
+    # sv.plot_image(annotated_image)
 
     section_annotations = perform_ocr(image, detections, client)
 
     return annotated_image, section_annotations
 
+# -------------------------------
 # Streamlit UI
+# -------------------------------
+
 def main():
     st.set_page_config(page_title="Document Segmentation using YOLOv10x", layout="wide")
     st.markdown("""
@@ -124,7 +186,13 @@ def main():
 
     if uploaded_file:
         file_type = uploaded_file.name.split('.')[-1].lower()
-        model = load_yolov10_model()
+
+        # Initialize and load the YOLOv10x model
+        model = load_model()
+
+        if model is None:
+            st.error("Failed to load the YOLOv10x model. Please try again later.")
+            st.stop()
 
         # Initialize Groq client with your API key
         # Ensure you have set your GROQ_API_KEY in Streamlit's secrets
@@ -132,7 +200,7 @@ def main():
             groq_api_key = st.secrets["GROQ_API_KEY"]
         except KeyError:
             st.error("GROQ API key not found. Please add it to the Streamlit secrets.")
-            return
+            st.stop()
 
         client = initialize_groq_client(api_key=groq_api_key)
 

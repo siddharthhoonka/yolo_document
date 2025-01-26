@@ -4,7 +4,6 @@ pytesseract
 Pillow
 pdf2image
 gdown
-ultralytics
 supervision
 groq
-numpy
+git+https://github.com/THU-MIG/yolov10.git

@@ -6,5 +6,6 @@ pdf2image
 gdown
 supervision
 groq
-ultralytics
+ultralytics==8.0.20
+huggingface_hub
 git+https://github.com/THU-MIG/yolov10.git

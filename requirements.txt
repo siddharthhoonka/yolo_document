@@ -6,4 +6,5 @@ pdf2image
 gdown
 supervision
 groq
+ultralytics
 git+https://github.com/THU-MIG/yolov10.git

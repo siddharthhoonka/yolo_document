@@ -8,7 +8,7 @@ from pdf2image import convert_from_path
 import tempfile
 import os
 import base64
-from yolov10 import YOLOv10  # Corrected import
+from ultralytics import YOLOv10  # Corrected import
 import supervision as sv
 from groq import Groq
 from pytesseract import Output

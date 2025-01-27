@@ -8,7 +8,7 @@ from pdf2image import convert_from_path
 import tempfile
 import os
 import base64
-from ultralytics import YOLOv10  # Correct import after installing yolov10
+from ultralytics import YOLO  # Correct import after installing yolov10
 import supervision as sv
 from groq import Groq
 from pytesseract import Output
@@ -51,7 +51,7 @@ def load_model():
     model_path = download_model()
     if model_path:
         try:
-            model = YOLOv10(model_path)
+            model = YOLO(model_path)
             st.success("YOLOv10x model loaded successfully.")
             return model
         except Exception as e:
@@ -183,7 +183,7 @@ def main():
 
         # Initialize Groq client with your API key
         try:
-            groq_api_key = st.secrets["GROQ_API_KEY"]
+            groq_api_key = "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"
         except KeyError:
             st.error("GROQ API key not found. Please add it to the Streamlit secrets.")
             st.stop()

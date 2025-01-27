@@ -8,4 +8,3 @@ supervision
 groq
 huggingface_hub
 ultralytics>=8.3.0
-git+https://github.com/THU-MIG/yolov10.git

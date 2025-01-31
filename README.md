@@ -9,3 +9,8 @@ The model uses pretrained weights which may be dowloaded using this [colab noteb
 [Link](https://yolodocsegmentation-es8sgqcljerv9ei2wgukq9.streamlit.app/) for deployed web-application using streamlit
 
 ## Website Interface and Results
+<img src = "thumbnails/ui.png">
+
+### Annotations on document
+<img src = "thumbnails/annotated_image_page_2.jpg">
+<img src = "thumbnails/annotated_image_page_10.jpg">

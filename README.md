@@ -4,9 +4,9 @@
 A streamlit app for Document segmentation into different sections. 
 
 This app uses the YOLOv10x model for document segmentation to annotate various sections of a document such as text-fileds, formulae, pictures, list-items,etc.
-The model uses pretrained weights which may be dowloaded using this [colab notebook](Doc_analysis.ipynb)
+The model uses pretrained weights which may be dowloaded using this [colab notebook](ocrmain.ipynb)
 
-[Link](https://yolodocsegmentation-es8sgqcljerv9ei2wgukq9.streamlit.app/) for deployed web-application using streamlit
+[Link](https://yolodocument-kp8j7kfnsldrfa76ctpcug.streamlit.app/) for deployed web-application using streamlit
 
 ## Website Interface and Results
 <img src = "thumbnails/ui.png">

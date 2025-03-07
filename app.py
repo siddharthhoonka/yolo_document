@@ -66,27 +66,26 @@ def perform_ocr(image, detections):
         x_min, y_min, x_max, y_max = map(int, box)
         cropped_image = image[y_min:y_max, x_min:x_max]
 
-        ocr_result = pytesseract.image_to_string(cropped_image, config='--psm 6', output_type=Output.STRING).strip()
-        confidence = pytesseract.image_to_data(cropped_image, config='--psm 6', output_type=Output.DICT)['conf']
+        if label != 6:  # Assuming label 6 is 'Picture'
+            ocr_result = pytesseract.image_to_string(cropped_image, config='--psm 6', output_type=Output.STRING).strip()
+            section_name = {
+                0: 'Caption',
+                1: 'Footnote',
+                2: 'Formula',
+                3: 'List-item',
+                4: 'Page-footer',
+                5: 'Page-header',
+                7: 'Section-header',
+                8: 'Table',
+                9: 'Text',
+                10: 'Title'
+            }.get(label, 'Unknown')
 
-        section_name = {
-            0: 'Caption',
-            1: 'Footnote',
-            2: 'Formula',
-            3: 'List-item',
-            4: 'Page-footer',
-            5: 'Page-header',
-            7: 'Section-header',
-            8: 'Table',
-            9: 'Text',
-            10: 'Title'
-        }.get(label, 'Unknown')
+            if section_name not in section_annotations:
+                section_annotations[section_name] = []
 
-        if section_name not in section_annotations:
-            section_annotations[section_name] = []
+            section_annotations[section_name].append(ocr_result)
 
-        section_annotations[section_name].append((ocr_result, max(confidence)))
-    
     return section_annotations
 
 def annotate_image(image, detections):
@@ -111,36 +110,36 @@ def process_image(model, image):
 def main():
     st.set_page_config(page_title="Document Segmentation using YOLOv10x", layout="wide")
     st.title("📄 Document Segmentation using YOLOv10x")
-    st.write("Upload multiple images or PDFs for processing.")
+    st.write("Separating documents into different sections and annotating them.")
 
-    # Multiple File Uploads
-    uploaded_files = st.file_uploader("Upload images or PDF files", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
-    
+    # File uploader
+    uploaded_files = st.file_uploader("Upload image(s) or PDF file(s)", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
+
     if uploaded_files:
         model = load_model()
         if model is None:
-            st.error("Failed to load YOLOv10x model.")
+            st.error("Failed to load the YOLOv10x model. Please try again later.")
             st.stop()
 
         for uploaded_file in uploaded_files:
             file_type = uploaded_file.name.split('.')[-1].lower()
-            st.subheader(f"Processing: {uploaded_file.name}")
 
             if file_type in ["jpg", "jpeg", "png"]:
                 image = Image.open(uploaded_file).convert("RGB")
                 image_np = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-                st.image(image, caption="Uploaded Image", use_column_width=True)
+                st.image(image, caption=f"Uploaded Image - {uploaded_file.name}", use_container_width=True)
+
                 with st.spinner("Processing image..."):
                     annotated_image, annotations = process_image(model, image_np)
 
-                st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption="Annotated Image", use_column_width=True)
+                st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption="Annotated Image", use_container_width=True)
 
                 st.subheader("Extracted Sections:")
                 for section, texts in annotations.items():
                     st.markdown(f"**{section}:**")
-                    for text, confidence in texts:
-                        st.markdown(f"- {text} (Confidence: {confidence}%)")
+                    for text in texts:
+                        st.markdown(f"- {text}")
 
             elif file_type == "pdf":
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf_file:
@@ -150,13 +149,14 @@ def main():
                 try:
                     pages = convert_from_path(temp_pdf_path, dpi=300)
                     for i, page in enumerate(pages, start=1):
-                        st.image(page, caption=f"Page {i}", use_column_width=True)
+                        st.image(page, caption=f"Page {i} - {uploaded_file.name}", use_container_width=True)
                         page_np = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
 
                         with st.spinner(f"Processing Page {i}..."):
                             annotated_image, annotations = process_image(model, page_np)
 
-                        st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption=f"Annotated Page {i}", use_column_width=True)
+                        st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption=f"Annotated Page {i}", use_container_width=True)
+
                 except Exception as e:
                     st.error(f"Error processing PDF: {e}")
                 finally:

@@ -8,7 +8,6 @@ import os
 import base64
 from ultralytics import YOLO  # Correct import after installing yolov10
 import supervision as sv
-from groq import Groq
 from pytesseract import Output
 import numpy as np
 import gdown
@@ -58,78 +57,36 @@ def load_model():
     return None
 
 # -------------------------------
-# Initialize Groq Client (With Direct API Key)
+# OCR and Image Processing Functions
 # -------------------------------
 
-GROQ_API_KEY = "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" 
-
-@st.cache_resource
-def initialize_groq_client():
-    return Groq(api_key=GROQ_API_KEY)
-
-# -------------------------------
-# OCR and Image Description Functions
-# -------------------------------
-
-def get_image_description(client, image_path):
-    with open(image_path, 'rb') as image_file:
-        image_data = base64.b64encode(image_file.read()).decode('utf-8')
-
-    try:
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Describe this image"},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
-                    ]
-                }
-            ],
-            model="llama-3.2-11b-vision-preview",
-            stream=False,
-        )
-        return chat_completion.choices[0].message.content
-    except Exception as e:
-        st.error(f"Error getting image description: {e}")
-        return "Description not available."
-
-def perform_ocr(image, detections, client):
+def perform_ocr(image, detections):
     section_annotations = {}
     for idx, (box, label) in enumerate(zip(detections.xyxy, detections.class_id)):
         x_min, y_min, x_max, y_max = map(int, box)
         cropped_image = image[y_min:y_max, x_min:x_max]
 
-        if label != 6:  # Assuming label 6 is 'Picture'
-            ocr_result = pytesseract.image_to_string(cropped_image, config='--psm 6', output_type=Output.STRING).strip()
-            section_name = {
-                0: 'Caption',
-                1: 'Footnote',
-                2: 'Formula',
-                3: 'List-item',
-                4: 'Page-footer',
-                5: 'Page-header',
-                7: 'Section-header',
-                8: 'Table',
-                9: 'Text',
-                10: 'Title'
-            }.get(label, 'Unknown')
+        ocr_result = pytesseract.image_to_string(cropped_image, config='--psm 6', output_type=Output.STRING).strip()
+        confidence = pytesseract.image_to_data(cropped_image, config='--psm 6', output_type=Output.DICT)['conf']
 
-            if section_name not in section_annotations:
-                section_annotations[section_name] = []
+        section_name = {
+            0: 'Caption',
+            1: 'Footnote',
+            2: 'Formula',
+            3: 'List-item',
+            4: 'Page-footer',
+            5: 'Page-header',
+            7: 'Section-header',
+            8: 'Table',
+            9: 'Text',
+            10: 'Title'
+        }.get(label, 'Unknown')
 
-            section_annotations[section_name].append(ocr_result)
-        else:
-            # Handle 'Picture' labels
-            temp_image_path = f"temp_image_{idx}.png"
-            cv2.imwrite(temp_image_path, cropped_image)
-            description = get_image_description(client, temp_image_path)
-            os.remove(temp_image_path)
+        if section_name not in section_annotations:
+            section_annotations[section_name] = []
 
-            if 'Picture' not in section_annotations:
-                section_annotations['Picture'] = []
-            section_annotations['Picture'].append(description)
-
+        section_annotations[section_name].append((ocr_result, max(confidence)))
+    
     return section_annotations
 
 def annotate_image(image, detections):
@@ -140,13 +97,11 @@ def annotate_image(image, detections):
     annotated_image = label_annotator.annotate(scene=annotated_image, detections=detections)
     return annotated_image
 
-def process_image(model, image, client):
+def process_image(model, image):
     results = model(source=image, conf=0.2, iou=0.8)[0]
     detections = sv.Detections.from_ultralytics(results)
     annotated_image = annotate_image(image, detections)
-
-    section_annotations = perform_ocr(image, detections, client)
-
+    section_annotations = perform_ocr(image, detections)
     return annotated_image, section_annotations
 
 # -------------------------------
@@ -156,63 +111,56 @@ def process_image(model, image, client):
 def main():
     st.set_page_config(page_title="Document Segmentation using YOLOv10x", layout="wide")
     st.title("📄 Document Segmentation using YOLOv10x")
-    st.write("Separating documents into different sections and annotating them.")
+    st.write("Upload multiple images or PDFs for processing.")
 
-    # File uploader
-    uploaded_file = st.file_uploader("Upload an image or PDF file", type=["jpg", "jpeg", "png", "pdf"])
-
-    if uploaded_file:
-        file_type = uploaded_file.name.split('.')[-1].lower()
-
-        # Load the YOLOv10x model
+    # Multiple File Uploads
+    uploaded_files = st.file_uploader("Upload images or PDF files", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
+    
+    if uploaded_files:
         model = load_model()
-
         if model is None:
-            st.error("Failed to load the YOLOv10x model. Please try again later.")
+            st.error("Failed to load YOLOv10x model.")
             st.stop()
 
-        # Initialize Groq client
-        client = initialize_groq_client()
+        for uploaded_file in uploaded_files:
+            file_type = uploaded_file.name.split('.')[-1].lower()
+            st.subheader(f"Processing: {uploaded_file.name}")
 
-        if file_type in ["jpg", "jpeg", "png"]:
-            # Process image files
-            image = Image.open(uploaded_file).convert("RGB")
-            image_np = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            if file_type in ["jpg", "jpeg", "png"]:
+                image = Image.open(uploaded_file).convert("RGB")
+                image_np = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-            st.image(image, caption="Uploaded Image", use_column_width=True)
+                st.image(image, caption="Uploaded Image", use_column_width=True)
+                with st.spinner("Processing image..."):
+                    annotated_image, annotations = process_image(model, image_np)
 
-            with st.spinner("Processing image..."):
-                annotated_image, annotations = process_image(model, image_np, client)
+                st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption="Annotated Image", use_column_width=True)
 
-            st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption="Annotated Image", use_column_width=True)
+                st.subheader("Extracted Sections:")
+                for section, texts in annotations.items():
+                    st.markdown(f"**{section}:**")
+                    for text, confidence in texts:
+                        st.markdown(f"- {text} (Confidence: {confidence}%)")
 
-            st.subheader("Extracted Sections:")
-            for section, texts in annotations.items():
-                st.markdown(f"**{section}:**")
-                for text in texts:
-                    st.markdown(f"- {text}")
+            elif file_type == "pdf":
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf_file:
+                    temp_pdf_path = temp_pdf_file.name
+                    temp_pdf_file.write(uploaded_file.getvalue())
 
-        elif file_type == "pdf":
-            # Process PDF files
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf_file:
-                temp_pdf_path = temp_pdf_file.name
-                temp_pdf_file.write(uploaded_file.getvalue())
+                try:
+                    pages = convert_from_path(temp_pdf_path, dpi=300)
+                    for i, page in enumerate(pages, start=1):
+                        st.image(page, caption=f"Page {i}", use_column_width=True)
+                        page_np = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
 
-            try:
-                pages = convert_from_path(temp_pdf_path, dpi=300)
-                for i, page in enumerate(pages, start=1):
-                    st.image(page, caption=f"Page {i}", use_column_width=True)
-                    page_np = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
+                        with st.spinner(f"Processing Page {i}..."):
+                            annotated_image, annotations = process_image(model, page_np)
 
-                    with st.spinner(f"Processing Page {i}..."):
-                        annotated_image, annotations = process_image(model, page_np, client)
-
-                    st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption=f"Annotated Page {i}", use_column_width=True)
-
-            except Exception as e:
-                st.error(f"Error processing PDF: {e}")
-            finally:
-                os.remove(temp_pdf_path)
+                        st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption=f"Annotated Page {i}", use_column_width=True)
+                except Exception as e:
+                    st.error(f"Error processing PDF: {e}")
+                finally:
+                    os.remove(temp_pdf_path)
 
 if __name__ == "__main__":
     main()

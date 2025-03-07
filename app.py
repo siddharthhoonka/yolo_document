@@ -157,6 +157,12 @@ def main():
 
                         st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), caption=f"Annotated Page {i}", use_container_width=True)
 
+                        st.subheader(f"Extracted Sections from Page {i}:")
+                        for section, texts in annotations.items():
+                            st.markdown(f"**{section}:**")
+                            for text in texts:
+                                st.markdown(f"- {text}")
+
                 except Exception as e:
                     st.error(f"Error processing PDF: {e}")
                 finally:

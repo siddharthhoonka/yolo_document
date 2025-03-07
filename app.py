@@ -1,25 +1,23 @@
 import streamlit as st
-import cv2  # Using opencv-python-headless
+import cv2  
 import pytesseract
 from PIL import Image
 from pdf2image import convert_from_path
 import tempfile
 import os
 import base64
-from ultralytics import YOLO  # Correct import after installing yolov10
+from ultralytics import YOLO 
 import supervision as sv
 from pytesseract import Output
 import numpy as np
 import gdown
 
-# -------------------------------
-# Model Download and Loading
-# -------------------------------
+
 
 MODEL_DIR = 'models'
 MODEL_FILENAME = 'yolov10x_best.pt'
 MODEL_PATH = os.path.join(MODEL_DIR, MODEL_FILENAME)
-FILE_ID = "15YJAUuHYJQlMm0_rjlC-e_VJPmAvjeiE"  # Replace with your actual File ID
+FILE_ID = "15YJAUuHYJQlMm0_rjlC-e_VJPmAvjeiE"  
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 
 @st.cache_resource
@@ -56,9 +54,7 @@ def load_model():
             return None
     return None
 
-# -------------------------------
-# OCR and Image Processing Functions
-# -------------------------------
+
 
 def perform_ocr(image, detections):
     section_annotations = {}
@@ -103,9 +99,7 @@ def process_image(model, image):
     section_annotations = perform_ocr(image, detections)
     return annotated_image, section_annotations
 
-# -------------------------------
-# Streamlit UI
-# -------------------------------
+
 
 def main():
     st.set_page_config(page_title="Document Segmentation using YOLOv10x", layout="wide")
